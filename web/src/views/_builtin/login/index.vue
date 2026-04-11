@@ -7,13 +7,9 @@ import { useAppStore } from '@/store/modules/app';
 import { useThemeStore } from '@/store/modules/theme';
 import { $t } from '@/locales';
 import PwdLogin from './modules/pwd-login.vue';
-import CodeLogin from './modules/code-login.vue';
-import Register from './modules/register.vue';
-import ResetPwd from './modules/reset-pwd.vue';
-import BindWechat from './modules/bind-wechat.vue';
+// 删掉不需要的 import: CodeLogin, Register, ResetPwd, BindWechat
 
 interface Props {
-  /** The login module */
   module?: UnionKey.LoginModule;
 }
 
@@ -27,15 +23,13 @@ interface LoginModule {
   component: Component;
 }
 
-const moduleMap: Record<UnionKey.LoginModule, LoginModule> = {
-  'pwd-login': { label: loginModuleRecord['pwd-login'], component: PwdLogin },
-  'code-login': { label: loginModuleRecord['code-login'], component: CodeLogin },
-  register: { label: loginModuleRecord.register, component: Register },
-  'reset-pwd': { label: loginModuleRecord['reset-pwd'], component: ResetPwd },
-  'bind-wechat': { label: loginModuleRecord['bind-wechat'], component: BindWechat }
+// ✅ 修改后的 moduleMap，移除报错的冗余属性
+const moduleMap: Record<string, LoginModule> = {
+  'pwd-login': { label: loginModuleRecord['pwd-login'], component: PwdLogin }
 };
 
-const activeModule = computed(() => moduleMap[props.module || 'pwd-login']);
+// 如果 module 不存在或不在 map 中，默认指向 pwd-login
+const activeModule = computed(() => moduleMap[props.module || 'pwd-login'] || moduleMap['pwd-login']);
 
 const bgThemeColor = computed(() =>
   themeStore.darkMode ? getPaletteColorByNumber(themeStore.themeColor, 600) : themeStore.themeColor
@@ -43,9 +37,7 @@ const bgThemeColor = computed(() =>
 
 const bgColor = computed(() => {
   const COLOR_WHITE = '#ffffff';
-
   const ratio = themeStore.darkMode ? 0.5 : 0.2;
-
   return mixColor(COLOR_WHITE, themeStore.themeColor, ratio);
 });
 </script>
