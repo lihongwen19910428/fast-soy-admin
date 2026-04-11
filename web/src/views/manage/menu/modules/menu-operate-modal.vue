@@ -238,13 +238,17 @@ function handleCreateButton() {
 }
 
 function getSubmitParams() {
-  const { layout, page, pathParam, ...params } = model.value;
+  // 把 buttons 单独解构出来，避免原样发给后端
+  const { layout, page, pathParam, buttons, ...params } = model.value as any;
 
   const component = transformLayoutAndPageToComponent(layout, page);
   const routePath = getRoutePathWithParam(model.value.routePath, pathParam);
 
   params.component = component;
   params.routePath = routePath;
+  
+  // ✅ 映射为后端代码中期望的参数名
+  params.by_menu_buttons = buttons;
 
   return params;
 }
@@ -254,17 +258,15 @@ async function handleSubmit() {
 
   const params = getSubmitParams();
 
-  // request
-  model.value.component = params.component;
-  model.value.routePath = params.routePath;
-
   if (props.operateType === 'add' || props.operateType === 'addChild') {
-    const { error } = await fetchAddMenu(model.value);
+    const { error } = await fetchAddMenu(params); // ✅ 改为 params
     if (!error) {
       window.$message?.success($t('common.addSuccess'));
     }
   } else if (props.operateType === 'edit') {
-    const { error } = await fetchUpdateMenu(model.value);
+    // ✅ 编辑时，确保把当前菜单的 id 塞进去
+    const updateData = { ...params, id: props.rowData?.id };
+    const { error } = await fetchUpdateMenu(updateData);
     if (!error) {
       window.$message?.success($t('common.updateSuccess'));
     }
@@ -365,7 +367,7 @@ watch(
               />
             </template>
           </NFormItemGi>
-          <NFormItemGi span="24 m:12" :label="$t('page.manage.menu.menuStatusType')" path="status">
+          <NFormItemGi span="24 m:12" :label="$t('page.manage.menu.menuStatusType')" path="statusType">
             <NRadioGroup v-model:value="model.statusType">
               <NRadio v-for="item in statusTypeOptions" :key="item.value" :value="item.value" :label="$t(item.label)" />
             </NRadioGroup>

@@ -93,6 +93,11 @@ async def _(menu_id: int, menu_in: MenuUpdate):
 
 @router.delete("/menus/{menu_id}", summary="删除菜单")
 async def _(menu_id: int):
+    # 【建议添加】检查是否存在子菜单
+    has_children = await Menu.filter(parent_id=menu_id).exists()
+    if has_children:
+        return Success(code="400", msg="该目录下存在子菜单，请先删除子菜单！")
+
     await menu_controller.remove(id=menu_id)
     await insert_log(log_type=LogType.AdminLog, log_detail_type=LogDetailType.MenuDeleteOne, by_user_id=0)
     return Success(msg="Deleted Successfully", data={"deleted_id": menu_id})
