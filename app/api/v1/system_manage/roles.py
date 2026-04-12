@@ -8,6 +8,8 @@ from app.models.system import Api, Button, Role
 from app.models.system import LogType, LogDetailType
 from app.schemas.base import Success, SuccessExtra
 from app.schemas.roles import RoleCreate, RoleUpdate, RoleUpdateAuthrization
+from app.models.system import StatusType  # 确保顶部导入了 StatusType
+import traceback  # 【新增】导入详细异常打印模块
 
 router = APIRouter()
 
@@ -43,15 +45,40 @@ async def get_role(role_id: int):
     return Success(data=data)
 
 
+
+
 @router.post("/roles", summary="创建角色")
 async def _(role_in: RoleCreate):
-    role = await role_controller.model.exists(role_code=role_in.role_code)
-    if role:
-        return Success(code="4090", msg="The role with this code already exists in the system.")
+    try:
+        # 【修复核心 1】：将前端传来的无效 0 转换为 None，避免外键冲突
+        if role_in.by_role_home_id == 0:
+            role_in.by_role_home_id = None
 
-    new_user = await role_controller.create(obj_in=role_in)
-    await insert_log(log_type=LogType.AdminLog, log_detail_type=LogDetailType.RoleCreateOne, by_user_id=0)
-    return Success(msg="Created Successfully", data={"created_id": new_user.id})
+        # 【修复核心 2】：兜底 status_type，如果没接收到，强制给个默认启用状态，防止非空报错
+        if role_in.status_type is None:
+            role_in.status_type = StatusType.enable
+
+        # 1. 检查角色编码是否已存在
+        role = await role_controller.model.exists(role_code=role_in.role_code)
+        if role:
+            return Success(code="4090", msg="The role with this code already exists in the system.")
+
+        # 2. 创建角色
+        new_role = await role_controller.create(obj_in=role_in)
+
+        # 3. 记录日志 (确保这里的 by_user_id 是 None)
+        await insert_log(log_type=LogType.AdminLog, log_detail_type=LogDetailType.RoleCreateOne, by_user_id=None)
+
+        return Success(msg="Created Successfully", data={"created_id": new_role.id})
+
+    except Exception as e:
+        print("\n" + "🔥" * 25)
+        print("❌ 新增角色触发了 500 异常：")
+        print(f"处理后的数据: {role_in.model_dump()}")
+        import traceback
+        traceback.print_exc()
+        print("🔥" * 25 + "\n")
+        raise e
 
 
 @router.patch("/roles/{role_id}", summary="更新角色")

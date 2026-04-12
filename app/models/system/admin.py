@@ -34,7 +34,9 @@ class Role(BaseModel, TimestampMixin):
     role_name = fields.CharField(max_length=20, unique=True, description="角色名称")
     role_code = fields.CharField(max_length=20, unique=True, description="角色编码")
     role_desc = fields.CharField(max_length=500, null=True, blank=True, description="角色描述")
-    by_role_home: fields.ForeignKeyRelation['Menu'] = fields.ForeignKeyField("app_system.Menu", related_name=None, description="角色首页")
+    by_role_home: fields.ForeignKeyRelation['Menu'] = fields.ForeignKeyField(
+        "app_system.Menu", related_name=None, null=True, description="角色首页"
+    )
     status_type = fields.CharEnumField(enum_type=StatusType, default=StatusType.enable, description="状态")
 
     by_role_menus: fields.ManyToManyRelation['Menu'] = fields.ManyToManyField("app_system.Menu", related_name="by_menu_roles")
