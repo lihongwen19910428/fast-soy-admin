@@ -43,7 +43,7 @@ async def BaseHandle(req: Request, exc: Exception, handle_exc, code: int | str, 
     except (orjson.JSONDecodeError, UnicodeDecodeError):
         request_body = {}
 
-    request_input = {"path": req.url.path, "query": req.query_params._dict, "body": request_body, "headers": dict(req.headers)}
+    request_input = {"path": req.url.path, "query": dict(req.query_params), "body": request_body, "headers": dict(req.headers)}
     content = dict(code=str(code), x_request_id=headers["x-request-id"], msg=msg, input=request_input, **kwargs)
     if isinstance(exc, handle_exc):
         return JSONResponse(content=content, status_code=status_code)

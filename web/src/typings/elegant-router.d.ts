@@ -35,16 +35,6 @@ declare module "@elegant-router/types" {
     "403": "/403";
     "404": "/404";
     "500": "/500";
-    "function": "/function";
-    "function_hide-child": "/function/hide-child";
-    "function_hide-child_one": "/function/hide-child/one";
-    "function_hide-child_three": "/function/hide-child/three";
-    "function_hide-child_two": "/function/hide-child/two";
-    "function_multi-tab": "/function/multi-tab";
-    "function_request": "/function/request";
-    "function_super-page": "/function/super-page";
-    "function_tab": "/function/tab";
-    "function_toggle-auth": "/function/toggle-auth";
     "home": "/home";
     "iframe-page": "/iframe-page/:url";
     "login": "/login/:module(pwd-login|code-login|register|reset-pwd|bind-wechat)?";
@@ -113,7 +103,6 @@ declare module "@elegant-router/types" {
     | "403"
     | "404"
     | "500"
-    | "function"
     | "home"
     | "iframe-page"
     | "login"
@@ -143,14 +132,6 @@ declare module "@elegant-router/types" {
     | "500"
     | "iframe-page"
     | "login"
-    | "function_hide-child_one"
-    | "function_hide-child_three"
-    | "function_hide-child_two"
-    | "function_multi-tab"
-    | "function_request"
-    | "function_super-page"
-    | "function_tab"
-    | "function_toggle-auth"
     | "home"
     | "manage_api"
     | "manage_log"

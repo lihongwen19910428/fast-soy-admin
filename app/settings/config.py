@@ -3,6 +3,7 @@ from typing import Any
 
 from pydantic_settings import BaseSettings
 from pydantic import Field
+import secrets
 
 
 def tortoise_orm_factory() -> dict[str, Any]:
@@ -26,7 +27,10 @@ class Settings(BaseSettings):
     APP_TITLE: str = "FastSoyAdmin"
     APP_DESCRIPTION: str = "Description"
 
-    CORS_ORIGINS: list[str] = Field(default_factory=lambda: ["*"])
+    # CORS_ORIGINS: list[str] = Field(default_factory=lambda: ["*"])
+    # CORS_ALLOW_CREDENTIALS: bool = True
+    # 修改后 (推荐写法，用正则允许所有跨域，且兼容 credentials=True)
+    CORS_ORIGIN_REGEX: str = ".*"  # 允许所有源跨域
     CORS_ALLOW_CREDENTIALS: bool = True
     CORS_ALLOW_METHODS: list[str] = Field(default_factory=lambda: ["*"])
     CORS_ALLOW_HEADERS: list[str] = Field(default_factory=lambda: ["*"])
@@ -40,7 +44,8 @@ class Settings(BaseSettings):
     BASE_DIR: Path = PROJECT_ROOT.parent
     LOGS_ROOT: Path = BASE_DIR / "logs/"
     STATIC_ROOT: Path = BASE_DIR / "static/"
-    SECRET_KEY: str = "015a42020f023ac2c3eda3d45fe5ca3fef8921ce63589f6d4fcdef9814cd7fa7"
+    # 方案：无环境变量时自动生成随机值，确保绝对安全
+    SECRET_KEY: str = Field(default_factory=lambda: secrets.token_hex(32))
     JWT_ALGORITHM: str = "HS256"
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 12  # 12 hours
     JWT_REFRESH_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 7  # 7 days

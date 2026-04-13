@@ -23,14 +23,6 @@ router = APIRouter()
 @router.post("/login", summary="登录")
 async def _(credentials: CredentialsSchema):
     user_obj: User | None = await user_controller.authenticate(credentials)  # 账号验证, 失败则触发异常返回请求错误
-    # user_role_code_list = await user_obj.by_user_roles.values_list("role_code", flat=True)
-    # all_login_role_codes = ["R_SUPER", "R_ADMIN", "R_USER"]
-    # for user_role_code in user_role_code_list:
-    #     if user_role_code in all_login_role_codes:
-    #         break
-    # else:
-    #     log.info(f"用户越权登录, 用户名: {user_obj.user_name}")
-    #     return Fail(msg="This user has no permission to login.")
 
     await user_controller.update_last_login(user_obj.id)
     payload = JWTPayload(
@@ -101,9 +93,19 @@ async def _():
     user_roles: list[Role] = await user_obj.by_user_roles
     user_role_codes = [user_role.role_code for user_role in user_roles]
 
-    user_role_button_codes = [b.button_code for b in await Button.all()] if "R_SUPER" in user_role_codes else [b.button_code for user_role in user_roles for b in await user_role.by_role_buttons]
+    # user_role_button_codes = [b.button_code for b in await Button.all()] if "R_SUPER" in user_role_codes else [b.button_code for user_role in user_roles for b in await user_role.by_role_buttons]
+    #
+    # user_role_button_codes = list(set(user_role_button_codes))
 
-    user_role_button_codes = list(set(user_role_button_codes))
+    # 修复语法并优化逻辑
+    if "R_SUPER" in user_role_codes:
+        buttons = await Button.all().values_list("button_code", flat=True)
+        user_role_button_codes = list(buttons)
+    else:
+        # 提前在最上方 user_obj 获取时：
+        # user_obj = await user_controller.get(id=user_id).prefetch_related("by_user_roles__by_role_buttons")
+        # 然后此处就不需要 await，直接内存中遍历，解决 N+1 性能问题：
+        user_role_button_codes = [b.button_code for user_role in user_roles for b in user_role.by_role_buttons]
 
     data.update({
         "userId": user_id,
