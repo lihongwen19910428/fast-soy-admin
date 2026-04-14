@@ -24,6 +24,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             search: Q = Q(),
             order: list[str] | None = None,
             fields: list[str] | None = None,
+            prefetch: list[str] | None = None,
             last_id: int | None = None,
             count_by_pk_field: bool = False
     ) -> tuple[Total, list[ModelType]]:
@@ -38,6 +39,9 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
         if fields:
             query = query.only(*fields)
 
+        if prefetch:
+            query = query.prefetch_related(*prefetch)
+
         if count_by_pk_field:
             total = await query.values_list(self.model._meta.pk_attr, flat=True)
             total = len(set(total))
@@ -50,6 +54,7 @@ class CRUDBase(Generic[ModelType, CreateSchemaType, UpdateSchemaType]):
             result = await query.offset((page - 1) * page_size).limit(page_size).order_by(*order)
 
         return Total(total), result
+
 
     async def create(self, obj_in: CreateSchemaType, exclude: set[str] | None = None) -> ModelType:
         if isinstance(obj_in, dict):

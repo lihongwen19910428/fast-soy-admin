@@ -77,16 +77,19 @@ fast-soy-admin/
 
 ### 1. 后端准备 (App)
 ```bash
-# 进入后端目录 (假设已安装 Python 3.10+)
-# 安装依赖
-pip install -r requirements.txt
+# 进入后端目录 (假设已安装 Python 3.12+ 及 uv)
+# 安装依赖并运行
+uv sync
+uv run run.py
+
+# 或者使用传统 pip (针对 requirements.txt)
+# pip install -r requirements.txt
+# python run.py
+```
 
 # 配置环境变量
 cp .env.example .env  # 根据实际情况修改数据库连接
 
-# 启动服务
-python run.py
-```
 
 ### 2. 前端准备 (Web)
 ```bash

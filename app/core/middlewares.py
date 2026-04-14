@@ -51,7 +51,25 @@ class BackGroundTaskMiddleware(SimpleBaseMiddleware):
         return self.app
 
     async def after_request(self, request: Request, response: dict) -> None:
-        await BgTasks.execute_tasks()
+        if response.get("type") == "http.response.body" and not response.get("more_body", False):
+            await BgTasks.execute_tasks()
+
+
+
+async def create_api_log(log_data: dict, user_id: int | None, x_request_id: str):
+    user_obj = await User.filter(id=user_id).first() if user_id else None
+    api_log_obj = await APILog.create(**log_data)
+    await Log.create(log_type=LogType.ApiLog, by_user=user_obj, api_log=api_log_obj, x_request_id=x_request_id)
+    return api_log_obj.id
+
+
+async def update_api_log(api_log_id: int, response_data: dict, process_time: float):
+    api_log_obj = await APILog.get_or_none(id=api_log_id)
+    if api_log_obj:
+        api_log_obj.response_data = response_data
+        api_log_obj.response_code = str(response_data.get("code", "-1"))
+        api_log_obj.process_time = process_time
+        await api_log_obj.save()
 
 
 class APILoggerMiddleware(BaseHTTPMiddleware):
@@ -61,68 +79,72 @@ class APILoggerMiddleware(BaseHTTPMiddleware):
         x_request_id = uuid4().hex
         CTX_X_REQUEST_ID.set(x_request_id)
         request.state.x_request_id = x_request_id
-        if (
-                all([declude not in path for declude in APP_SETTINGS.ADD_LOG_ORIGINS_DECLUDE])
-                and (
+
+        # Determine if logging is needed
+        should_log = (
+            all([exclude not in path for exclude in APP_SETTINGS.ADD_LOG_ORIGINS_DECLUDE])
+            and (
                 "*" in APP_SETTINGS.ADD_LOG_ORIGINS_INCLUDE
                 or any([include in path for include in APP_SETTINGS.ADD_LOG_ORIGINS_INCLUDE]))
-        ):
-            if request.scope["type"] == "http":
-                token = request.headers.get("Authorization")
-                user_obj = None
-                if token:
-                    status, _, decode_data = check_token(token.replace("Bearer ", "", 1))
-                    if status and decode_data:
-                        user_id = int(decode_data["data"]["userId"])
-                        user_obj = await User.filter(id=user_id).first()
-                        if user_obj:
-                            CTX_USER_ID.set(user_id)
-                try:
-                    request_data = await request.json() if request.method in ["POST", "PUT", "PATCH"] else None
-                except (JSONDecodeError, UnicodeDecodeError):
-                    request_data = None
+        )
 
-                url = str(request.url.path)
-                if len(url) > 500:
-                    raise HTTPException(msg="请求url path过长, 请联系开发人员", code=Code.FAIL)
+        if should_log and request.scope["type"] == "http":
+            token = request.headers.get("Authorization")
+            user_id = None
+            if token:
+                status, _, decode_data = check_token(token.replace("Bearer ", "", 1))
+                if status and decode_data:
+                    user_id = int(decode_data["data"]["userId"])
+                    CTX_USER_ID.set(user_id)
 
-                api_log_data = dict(
-                    ip_address=request.client.host if request.client else None,
-                    user_agent=request.headers.get("user-agent"),
-                    request_domain=request.url.hostname,
-                    request_path=request.url.path,
-                    request_params=dict(request.query_params) or None,
-                    request_data=request_data,
-                    x_request_id=x_request_id,
-                )
+            try:
+                # Use a wrapper or clone if needed, but for now just read
+                request_data = await request.json() if request.method in ["POST", "PUT", "PATCH"] else None
+            except (JSONDecodeError, UnicodeDecodeError):
+                request_data = None
 
-                api_log_obj = await APILog.create(**api_log_data)
-                request.state.api_log_id = api_log_obj.id
-                await Log.create(log_type=LogType.ApiLog, by_user=user_obj, api_log=api_log_obj, x_request_id=x_request_id)
+            url_path = request.url.path
+            if len(url_path) > 500:
+                raise HTTPException(msg="请求url path过长, 请联系开发人员", code=Code.FAIL)
+
+            api_log_data = dict(
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+                request_domain=request.url.hostname,
+                request_path=url_path,
+                request_params=dict(request.query_params) or None,
+                request_data=request_data,
+                x_request_id=x_request_id,
+            )
+
+            # We need the ID for the response middleware, so we might still need to create it synchronously
+            # OR we can pass a future/context.
+            # To keep it simple and correct for ID tracking, we create APILog synchronously but Log and relations can be background.
+            # Actually, let's just move the whole thing to background and use x_request_id to link if needed.
+            # But the current design expects request.state.api_log_id.
+            
+            api_log_obj = await APILog.create(**api_log_data)
+            request.state.api_log_id = api_log_obj.id
+            
+            # Background task for the Log entry and User relation
+            await BgTasks.add_task(Log.create, log_type=LogType.ApiLog, by_user_id=user_id, api_log=api_log_obj, x_request_id=x_request_id)
 
         response = await call_next(request)
         return response
 
 
 class APILoggerAddResponseMiddleware(SimpleBaseMiddleware):
-    """
-    需要与APILoggerMiddleware搭配使用
-    """
-
     async def after_request(self, request: Request, response: dict) -> None:
         if response.get("type") == "http.response.body" and hasattr(request.state, "api_log_id"):
             response_body = response.get("body", b"")
             try:
                 resp = orjson.loads(response_body)
-                api_log_obj = await APILog.get(id=request.state.api_log_id)
-                if api_log_obj:
-                    api_log_obj.response_data = resp
-                    api_log_obj.response_code = resp.get("code", "-1")
-                    api_log_obj.process_time = (datetime.now() - request.state.start_time).total_seconds()
-                    await api_log_obj.save()
-
+                process_time = (datetime.now() - request.state.start_time).total_seconds()
+                # Move update to background
+                await BgTasks.add_task(update_api_log, request.state.api_log_id, resp, process_time)
             except (orjson.JSONDecodeError, UnicodeDecodeError):
                 ...
 
         if response.get("type") == "http.response.start" and hasattr(request.state, "x_request_id"):
             response["headers"].append((b"x-request-id", request.state.x_request_id.encode()))
+

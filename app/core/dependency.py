@@ -1,6 +1,7 @@
 from typing import Any
 
 import jwt
+import orjson
 from fastapi import Depends, Request
 from fastapi.security import OAuth2PasswordBearer
 
@@ -56,22 +57,57 @@ class AuthControl:
 class PermissionControl:
     @classmethod
     async def has_permission(cls, request: Request, current_user: User = Depends(AuthControl.is_authed)) -> None:
-        await current_user.fetch_related("by_user_roles")
-        user_roles_codes: list[str] = [r.role_code for r in current_user.by_user_roles]
-        if "R_SUPER" in user_roles_codes:  # 超级管理员
-            return
+        redis = request.app.state.redis
+        cache_key = f"user_perms:{current_user.id}"
+        
+        # Try to get from cache
+        try:
+            cached_perms = await redis.get(cache_key)
+            if cached_perms:
+                permission_apis = orjson.loads(cached_perms)
+            else:
+                permission_apis = None
+        except Exception:
+            permission_apis = None
 
-        if not current_user.by_user_roles:
-            raise HTTPException(code=Code.PERMISSION_DENIED, msg="The user is not bound to a role")
+        if permission_apis is None:
+            await current_user.fetch_related("by_user_roles")
+            user_roles_codes: list[str] = [r.role_code for r in current_user.by_user_roles]
+            if "R_SUPER" in user_roles_codes:  # 超级管理员
+                # Cache super status or just return
+                return
 
+            if not current_user.by_user_roles:
+                raise HTTPException(code=Code.PERMISSION_DENIED, msg="The user is not bound to a role")
+
+            apis = [await role.by_role_apis for role in current_user.by_user_roles]
+            # permission_apis = list(set((api.api_method.value, api.api_path, api.status_type) for api in sum(apis, [])))
+            # orjson can't serialize sets/enums directly without help, let's normalize to strings/dicts
+            permission_apis = []
+            for api in sum(apis, []):
+                permission_apis.append({
+                    "method": api.api_method.value.lower(),
+                    "path": api.api_path,
+                    "status": api.status_type.value
+                })
+            
+            # Cache for 1 hour (3600 seconds)
+            try:
+                await redis.setex(cache_key, 3600, orjson.dumps(permission_apis))
+            except Exception:
+                pass
+
+        # Check permission
         method = request.method.lower()
         path = request.url.path
-
-        apis = [await role.by_role_apis for role in current_user.by_user_roles]
-        permission_apis = list(set((api.api_method.value, api.api_path, api.status_type) for api in sum(apis, [])))
-        for (api_method, api_path, api_status) in permission_apis:
-            if api_method == method and check_url(api_path, request.url.path):  # API权限检测通过
-                if api_status == StatusType.disable:
+        
+        # Check against cached or freshly fetched perms
+        # Special case for super admin (handled above already if freshly fetched, 
+        # but if from cache we should have a flag)
+        
+        for api in permission_apis:
+            if api["method"] == method and check_url(api["path"], path):
+                if api["status"] == StatusType.disable.value:
                     raise HTTPException(code=Code.API_DISABLED, msg=f"The API has been disabled, method: {method} path: {path}")
                 return
 
@@ -80,6 +116,7 @@ class PermissionControl:
         log.error(f"x-request-id: {CTX_X_REQUEST_ID.get()}")
         log.error("*" * 20)
         raise HTTPException(code=Code.PERMISSION_DENIED, msg=f"Permission denied, method: {method} path: {path}")
+
 
 
 DependAuth = Depends(AuthControl.is_authed)

@@ -6,7 +6,10 @@ RUN uv sync --frozen --no-dev --no-install-project
 
 # Stage 2: copy app source and run
 FROM deps AS runtime
-COPY . .
+COPY app ./app
+COPY migrations ./migrations
+COPY run.py ./
+COPY pyproject.toml uv.lock ./
 COPY .env.docker .env
 ENV LANG=zh_CN.UTF-8
 EXPOSE 9999

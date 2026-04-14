@@ -124,7 +124,7 @@ class Button(BaseModel, TimestampMixin):
 class Log(BaseModel):
     id = fields.IntField(pk=True, description="日志id")
     log_type = fields.CharEnumField(LogType, description="日志类型")
-    by_user: fields.ForeignKeyRelation['User'] = fields.ForeignKeyField(null=True, model_name="app_system.User", related_name=None, related_nameon_delete=fields.NO_ACTION, description="关联专员")
+    by_user: fields.ForeignKeyRelation['User'] = fields.ForeignKeyField(null=True, model_name="app_system.User", related_name=None, on_delete=fields.NO_ACTION, description="关联专员")
     api_log: fields.OneToOneRelation['APILog'] = fields.OneToOneField("app_system.APILog", null=True, related_name=None, on_delete=fields.SET_NULL, description="API日志")
     log_detail_type = fields.CharEnumField(LogDetailType, null=True, description="日志详情类型")
     create_time = fields.DatetimeField(auto_now_add=True, description="创建时间")
